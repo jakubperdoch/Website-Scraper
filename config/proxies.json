@@ -1,0 +1,38 @@
+[
+    {
+        "protocol": "http",
+        "host": "194.31.183.181",
+        "port": 12323,
+        "auth": {
+          "username": "14ae6a8246b54",
+          "password": "7e2d298512"
+        }
+    },
+    {
+        "protocol": "http",
+        "host": "45.84.108.80",
+        "port": 12323,
+        "auth": {
+          "username": "14ae6a8246b54",
+          "password": "7e2d298512"
+        }
+    },
+    {
+        "protocol": "http",
+        "host": "45.133.108.188",
+        "port": 12323,
+        "auth": {
+          "username": "14ae6a8246b54",
+          "password": "7e2d298512"
+        }
+    },
+    {
+        "protocol": "http",
+        "host": "193.3.176.1",
+        "port": 12323,
+        "auth": {
+          "username": "14ae6a8246b54",
+          "password": "7e2d298512"
+        }
+    }
+]
