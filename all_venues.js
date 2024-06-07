@@ -208,12 +208,13 @@ async function runScrape(
  }
 }
 
-function compareV2(a, b) {
+function compareEvents(a, b) {
+ // Function to determine sort weight based on lastBuy information
  const lastBuySortWeight = (event) => {
-  if (typeof event.lastBuy === 'object' && event.lastBuy !== 'ND') {
-   return 0; // Has valid lastBuy, prioritize higher
+  if (typeof event.lastBuy === 'object') {
+   return 0; 
   }
-  return 1; // "ND" or no lastBuy info, prioritize lower
+  return 1; // lastBuy is 'ND' or absent, prioritize lower
  };
 
  const weightA = lastBuySortWeight(a);
@@ -253,7 +254,7 @@ function joinAllEvents(result, venueCount) {
  const dataToSave = {
   totalEvents: venueCount,
   events: consolidatedEvents.sort((a, b) =>
-   compareV2(a.events[0], b.events[0])
+   compareEvents(a.events[0], b.events[0])
   ),
  };
 
