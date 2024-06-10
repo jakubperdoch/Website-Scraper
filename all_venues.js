@@ -245,6 +245,8 @@ function joinAllEvents(result, venueCount) {
     url: event.url,
     formattedDateWithoutYear: event.formattedDateWithoutYear,
     lastBuy: event.lastBuy,
+    minPrice: event.eventDetail?.minPrice,
+    maxPrice: event.eventDetail?.maxPrice,
    })),
   };
   consolidatedEvents.push(mergedEvent);
