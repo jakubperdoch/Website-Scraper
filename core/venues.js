@@ -61,7 +61,7 @@ async function getEventsByVenue(
   currentUrl =
    currentUrl +
    `?pageIndex=${customParams.pageIndex}&method=GetFilteredEvents&venueId=${venue.venueId}&to=9999-12-31T23:59:59.999Z&nearbyGridRadius=50`;
-  if (tryNumber < 5 && currentUrl) {
+  if (tryNumber < 1 && currentUrl) {
    await axiosInstance
     .post(currentUrl)
     .then((response) => {
