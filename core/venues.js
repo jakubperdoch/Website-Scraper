@@ -403,7 +403,6 @@ async function saveFileData(jsonData, fileName = 'result_venues.json') {
 
 // Listen the progress bar
 async function listenInfoViewed(browser, url) {
- console.log(url);
  const page = await browser.newPage();
  try {
   await page.goto(url);

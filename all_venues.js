@@ -212,7 +212,7 @@ function compareEvents(a, b) {
  // Function to determine sort weight based on lastBuy information
  const lastBuySortWeight = (event) => {
   if (typeof event.lastBuy === 'object') {
-   return 0; 
+   return 0;
   }
   return 1; // lastBuy is 'ND' or absent, prioritize lower
  };
@@ -224,23 +224,31 @@ function compareEvents(a, b) {
 }
 
 function joinAllEvents(result, venueCount) {
- // Group events by artist name
  const groupedEvents = {};
  result.forEach((event) => {
-  const artistName = event.name; // Use the name field for the artist name
+  const artistName = event.name;
   if (!groupedEvents[artistName]) {
    groupedEvents[artistName] = [];
   }
   groupedEvents[artistName].push(event);
  });
 
- // Consolidate events for each artist
  const consolidatedEvents = [];
  for (const artist in groupedEvents) {
   const artistEvents = groupedEvents[artist];
-  const mergedEvent = {
-   artistName: artist,
-   events: artistEvents.map((event) => ({
+  const uniqueUrls = new Set();
+
+  const uniqueEvents = artistEvents.filter((event) => {
+   if (uniqueUrls.has(event.url)) {
+    return false;
+   }
+   uniqueUrls.add(event.url);
+   return true;
+  });
+
+  consolidatedEvents.push({
+   artist,
+   events: uniqueEvents.map((event) => ({
     eventName: event.name,
     url: event.url,
     formattedDateWithoutYear: event.formattedDateWithoutYear,
@@ -248,11 +256,9 @@ function joinAllEvents(result, venueCount) {
     minPrice: event.eventDetail?.minPrice,
     maxPrice: event.eventDetail?.maxPrice,
    })),
-  };
-  consolidatedEvents.push(mergedEvent);
+  });
  }
 
- // Structure final data to save
  const dataToSave = {
   totalEvents: venueCount,
   events: consolidatedEvents.sort((a, b) =>
