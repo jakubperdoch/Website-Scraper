@@ -10,6 +10,24 @@ const {
  saveFileData,
 } = require('./core/venues.js');
 
+const userAgentList = [
+ 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+ 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+];
+
+const getRandomUserAgent = () =>
+ userAgentList[Math.floor(Math.random() * userAgentList.length)];
+
+const defaultHeaders = {
+ 'User-Agent': getRandomUserAgent(),
+ 'Accept-Language': 'en-US,en;q=0.9',
+ Accept:
+  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+ 'Cache-Control': 'no-cache',
+ Connection: 'keep-alive',
+ 'Accept-Encoding': 'gzip, deflate, br',
+};
+
 async function runScrape(
  locationIndex = 0,
  limitCountVenues = -1,
@@ -17,135 +35,105 @@ async function runScrape(
  searchInfoViewed = true,
  currentProxy = -1
 ) {
- // Get config
- const settings = await fs.readFile('config/config.json', 'utf-8');
- jsonConfig = JSON.parse(settings);
+ try {
+  const [settings, jsonLocation] = await Promise.all([
+   fs.readFile('config/config.json', 'utf-8'),
+   fs.readFile('config/location.json', 'utf-8'),
+  ]);
+  const jsonConfig = JSON.parse(settings);
+  const locationConfig = JSON.parse(jsonLocation);
+  const currentLocation = locationConfig.locations[locationIndex];
 
- // Get location
- const jsonLocation = JSON.parse(
-  await fs.readFile('config/location.json', 'utf-8')
- );
- const currentLocation = jsonLocation.locations[locationIndex];
-
- // Get proxy
- selectedProxy = null;
- axiosInstance = axios.create();
- configBrowser = {
-  headless: true,
- };
- if (currentProxy != -1) {
-  try {
-   const proxyFile = JSON.parse(
-    await fs.readFile('config/proxies.json', 'utf-8')
-   );
-   selectedProxy = proxyFile[currentProxy];
-   axiosInstance = axios.create({
-    proxy: selectedProxy,
-   });
-   configBrowser = {
-    headless: true,
-    proxy: {
+  let selectedProxy = null;
+  let axiosInstance = axios.create({ headers: defaultHeaders });
+  let configBrowser = { headless: true };
+  if (currentProxy !== -1) {
+   try {
+    const proxyFile = JSON.parse(
+     await fs.readFile('config/proxies.json', 'utf-8')
+    );
+    selectedProxy = proxyFile[currentProxy];
+    axiosInstance = axios.create({
+     proxy: selectedProxy,
+     headers: defaultHeaders,
+    });
+    configBrowser.proxy = {
      server: `${selectedProxy.protocol}://${selectedProxy.host}:${selectedProxy.port}`,
      username: selectedProxy.auth.username,
      password: selectedProxy.auth.password,
-    },
-   };
-  } catch (pe) {
-   console.log('proxy error.');
+    };
+   } catch (pe) {
+    console.log('proxy error.');
+   }
   }
- }
- await getCurrentLocation(axiosInstance);
 
- // prepare browser
- const browser = await firefox.launch(configBrowser);
- const page = await browser.newPage();
+  await getCurrentLocation(axiosInstance);
 
- const result = [];
- allEvents = [];
- venuesResult = {
-  venues: '',
-  totalEvents: 0,
- };
+  const browser = await firefox.launch(configBrowser);
+  const context = await browser.newContext({
+   userAgent: getRandomUserAgent(),
+   extraHTTPHeaders: defaultHeaders,
+  });
+  const page = await context.newPage();
 
- /**
-  * Handle uncaught exceptions to perform cleanup operations before exiting.
-  *
-  * @param {Error} err - The uncaught exception object.
-  * @returns {Promise<void>} A promise that resolves after cleanup operations are completed.
-  */
- process.on('uncaughtException', async (err) => {
-  console.error('Error - uncaughtException:', err.message);
-  await saveFileData(
-   venuesResult,
-   'result_venues_' + currentLocation.name + '.json'
-  );
-  await saveFileData(
-   joinAllEvents(result, result.length),
-   'all_events_' + currentLocation.name + '.json'
-  );
-  process.exit(1); // Salir con código de error 1 (o cualquier otro código de error que prefieras).
- });
+  const result = [];
+  const venuesResult = { venues: '', totalEvents: 0 };
 
- /**
-  * Handle the suspension signal (SIGTSTP) to perform cleanup operations before the process is suspended.
-  *
-  * The SIGTSTP signal is emitted when the user suspends the process (usually by pressing Ctrl+Z).
-  * This handler logs a message, performs cleanup operations, saves data, and exits the process with an error code.
-  *
-  * @async
-  * @function handleSuspensionSignal
-  * @returns {Promise<void>} A promise that resolves after cleanup operations are completed.
-  */
- process.on('SIGTSTP', async () => {
-  console.log('Process suspended by user.');
-  await saveFileData(
-   venuesResult,
-   'result_venues_' + currentLocation.name + '.json'
+  const handleCleanup = async () => {
+   await saveFileData(
+    venuesResult,
+    `result_venues_${currentLocation.name}.json`
+   );
+   await saveFileData(
+    joinAllEvents(result, result.length),
+    `all_events_${currentLocation.name}.json`
+   );
+   process.exit(1);
+  };
+
+  process.on('uncaughtException', async (err) => {
+   console.error('Error - uncaughtException:', err.message);
+   await handleCleanup();
+  });
+
+  process.on('SIGTSTP', async () => {
+   console.log('Process suspended by user.');
+   await handleCleanup();
+  });
+
+  process.on('SIGINT', async () => {
+   console.log('Killing process!');
+   await handleCleanup();
+  });
+
+  logInfo(`${color.green('Getting list venues - ' + currentLocation.name)}`);
+  const listVenues = await getVenuesByLocation(
+   jsonConfig.events_by_location,
+   currentLocation,
+   0,
+   axiosInstance
   );
 
-  await saveFileData(
-   joinAllEvents(result, result.length),
-   'all_events_' + currentLocation.name + '.json'
-  );
+  if (listVenues) {
+   logInfo(`Total venues found: ${color.yellow(listVenues.length)}`);
+   venuesResult.venues = listVenues;
 
-  process.exit(1); // Exit with error code 1 or any other preferred error code
- });
+   const processedVenues = new Set();
 
- /**
-  * Handle the SIGINT signal to gracefully shut down the process.
-  *
-  * @returns {Promise<void>} A promise that resolves after cleanup operations are completed.
-  */
- process.on('SIGINT', async () => {
-  console.log('Killing process!');
-  await saveFileData(
-   venuesResult,
-   'result_venues_' + currentLocation.name + '.json'
-  );
-  await saveFileData(
-   joinAllEvents(result, result.length),
-   'all_events_' + currentLocation.name + '.json'
-  );
-  process.exit();
- });
+   for (const [index, venue] of listVenues.entries()) {
+    if (limitCountVenues !== -1 && index >= limitCountVenues) break;
 
- // Get list events by location
- logInfo(`${color.green('Getting list venues - ' + currentLocation.name)}`);
- const listVenues = await getVenuesByLocation(
-  jsonConfig.events_by_location,
-  currentLocation,
-  0,
-  axiosInstance
- );
+    if (processedVenues.has(venue.venueName)) {
+     logInfo(
+      `Skipping already processed venue: ${color.yellow(venue.venueName)}`
+     );
+     continue;
+    }
+    processedVenues.add(venue.venueName);
 
- if (listVenues) {
-  logInfo(`Total venues found: ${color.yellow(listVenues.length)}`);
-  venuesResult.venues = listVenues;
-  c = 0;
-  for (const venue of listVenues) {
-   try {
     logInfo(`searching events in ${color.yellow(venue.venueName)}`);
-    tempR = await getEventsByVenueWithPagination(
+
+    const tempR = await getEventsByVenueWithPagination(
      jsonConfig,
      venue,
      currentLocation.name,
@@ -153,74 +141,42 @@ async function runScrape(
      searchInfoViewed,
      axiosInstance
     );
+
     if (tempR.length > 0) {
      result.push(...tempR);
-     venuesResult.venues[c].events = tempR;
+     venue.events = tempR;
     }
+
     logInfo(
-     `Total events found for ${color.green(venue.venueName)}: ${color.yellow(
-      tempR.length
-     )}`
+     `Total events found for ${color.green(venue.venueName)}: ${color.yellow(tempR.length)}`
     );
+   }
 
-    console.log(' ------------------------ ');
-    // Break when limit
-    if (limitCountVenues != -1) {
-     c = c + 1;
-     if (c >= limitCountVenues) {
-      break;
-     }
-    }
-   } catch (_) {}
-  }
-  await browser.close();
-  venuesResult.totalEvents = result.length;
-  logInfo(`***Total events ${color.green(result.length)}`);
-  // Save json file
-  $isSaved = await saveFileData(
-   joinAllEvents(result, result.length),
-   'all_events_' + currentLocation.name + '.json'
-  );
+   await browser.close();
+   venuesResult.totalEvents = result.length;
+   logInfo(`***Total events ${color.green(result.length)}`);
 
-  // GET TOP 100 EVENTS ORDER BY numberViewed AND numberLastBuy - DESC
-  try {
-   // Read json file or use result
    if (result.length > 0) {
-    allEvents = joinAllEvents(result);
-    if (showTop100) {
-     allEvents = allEvents.slice(0, 100);
-     await saveFileData(
-      joinAllEvents(result, result.length),
-      'top100_events_' + currentLocation.name + '.json'
-     );
-    } else {
-     await saveFileData(
-      joinAllEvents(result, result.length),
-      'all_events_' + currentLocation.name + '.json'
-     );
-    }
+    const allEvents = showTop100
+     ? joinAllEvents(result).slice(0, 100)
+     : joinAllEvents(result);
+    const fileName = showTop100
+     ? `top100_events_${currentLocation.name}.json`
+     : `all_events_${currentLocation.name}.json`;
+    await saveFileData(allEvents, fileName);
    } else {
     console.log('No events found');
    }
-  } catch (fileError) {
-   console.log('Error saving all events: ' + fileError.message);
   }
+ } catch (fileError) {
+  console.log('Error: ' + fileError.message);
  }
 }
 
 function compareEvents(a, b) {
- // Function to determine sort weight based on lastBuy information
- const lastBuySortWeight = (event) => {
-  if (typeof event.lastBuy === 'object') {
-   return 0;
-  }
-  return 1; // lastBuy is 'ND' or absent, prioritize lower
- };
-
- const weightA = lastBuySortWeight(a);
- const weightB = lastBuySortWeight(b);
-
- return weightA - weightB;
+ const lastBuySortWeight = (event) =>
+  typeof event.lastBuy === 'object' ? 0 : 1;
+ return lastBuySortWeight(a) - lastBuySortWeight(b);
 }
 
 function joinAllEvents(result, venueCount) {
@@ -237,11 +193,8 @@ function joinAllEvents(result, venueCount) {
  for (const artist in groupedEvents) {
   const artistEvents = groupedEvents[artist];
   const uniqueUrls = new Set();
-
   const uniqueEvents = artistEvents.filter((event) => {
-   if (uniqueUrls.has(event.url)) {
-    return false;
-   }
+   if (uniqueUrls.has(event.url)) return false;
    uniqueUrls.add(event.url);
    return true;
   });
@@ -259,14 +212,12 @@ function joinAllEvents(result, venueCount) {
   });
  }
 
- const dataToSave = {
+ return {
   totalEvents: venueCount,
   events: consolidatedEvents.sort((a, b) =>
    compareEvents(a.events[0], b.events[0])
   ),
  };
-
- return dataToSave;
 }
 
 module.exports = { runScrape };
