@@ -10,16 +10,9 @@ const {
  saveFileData,
 } = require('./core/venues.js');
 
-const userAgentList = [
- 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
- 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-];
-
-const getRandomUserAgent = () =>
- userAgentList[Math.floor(Math.random() * userAgentList.length)];
-
 const defaultHeaders = {
- 'User-Agent': getRandomUserAgent(),
+ 'User-Agent':
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
  'Accept-Language': 'en-US,en;q=0.9',
  Accept:
   'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
@@ -63,7 +56,6 @@ async function runScrape(
      password: selectedProxy.auth.password,
     };
    } catch (pe) {
-    console.log('proxy error.');
    }
   }
 
@@ -71,10 +63,10 @@ async function runScrape(
 
   const browser = await firefox.launch(configBrowser);
   const context = await browser.newContext({
-   userAgent: getRandomUserAgent(),
+   userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
    extraHTTPHeaders: defaultHeaders,
   });
-  const page = await context.newPage();
 
   const result = [];
   const venuesResult = { venues: '', totalEvents: 0 };
@@ -88,11 +80,11 @@ async function runScrape(
     joinAllEvents(result, result.length),
     `all_events_${currentLocation.name}.json`
    );
+   await browser.close();
    process.exit(1);
   };
 
   process.on('uncaughtException', async (err) => {
-   console.error('Error - uncaughtException:', err.message);
    await handleCleanup();
   });
 
@@ -120,39 +112,44 @@ async function runScrape(
 
    const processedVenues = new Set();
 
-   for (const [index, venue] of listVenues.entries()) {
-    if (limitCountVenues !== -1 && index >= limitCountVenues) break;
+   const venuePromises = listVenues
+    .slice(0, limitCountVenues === -1 ? listVenues.length : limitCountVenues)
+    .map(async (venue) => {
+     if (processedVenues.has(venue.venueName)) {
+      return;
+     }
+     processedVenues.add(venue.venueName);
 
-    if (processedVenues.has(venue.venueName)) {
-     logInfo(
-      `Skipping already processed venue: ${color.yellow(venue.venueName)}`
+     logInfo(`searching events in ${color.yellow(venue.venueName)}`);
+
+     const tempR = await getEventsByVenueWithPagination(
+      jsonConfig,
+      venue,
+      currentLocation.name,
+      context,
+      searchInfoViewed,
+      axiosInstance
      );
-     continue;
-    }
-    processedVenues.add(venue.venueName);
 
-    logInfo(`searching events in ${color.yellow(venue.venueName)}`);
+     if (tempR.length > 0) {
+      result.push(...tempR);
+      venue.events = tempR;
+      await saveFileData(
+       venuesResult,
+       `result_venues_${currentLocation.name}.json`
+      );
+      await saveFileData(
+       joinAllEvents(result, result.length),
+       `all_events_${currentLocation.name}.json`
+      );
+     }
 
-    const tempR = await getEventsByVenueWithPagination(
-     jsonConfig,
-     venue,
-     currentLocation.name,
-     browser,
-     searchInfoViewed,
-     axiosInstance
-    );
+     logInfo(
+      `Total events found for ${color.green(venue.venueName)}: ${color.yellow(tempR.length)}`
+     );
+    });
+   await Promise.all(venuePromises);
 
-    if (tempR.length > 0) {
-     result.push(...tempR);
-     venue.events = tempR;
-    }
-
-    logInfo(
-     `Total events found for ${color.green(venue.venueName)}: ${color.yellow(tempR.length)}`
-    );
-   }
-
-   await browser.close();
    venuesResult.totalEvents = result.length;
    logInfo(`***Total events ${color.green(result.length)}`);
 
@@ -169,7 +166,7 @@ async function runScrape(
    }
   }
  } catch (fileError) {
-  console.log('Error: ' + fileError.message);
+
  }
 }
 

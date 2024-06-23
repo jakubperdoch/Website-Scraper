@@ -349,7 +349,6 @@ async function getLastBuy(urlEvent, axiosInstance = null) {
    },
   };
 
-
   const currentAxios = axiosInstance || axios.create();
 
   try {
@@ -372,13 +371,10 @@ async function getLastBuy(urlEvent, axiosInstance = null) {
      result = { message: message, qualifier: qualifier };
     }
    });
-  } catch (err) {
-   console.error('Error: ', err);
-  }
+  } catch (err) {}
  }
  return result;
 }
-
 
 module.exports = {
  extractViewedText,
