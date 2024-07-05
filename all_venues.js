@@ -120,7 +120,7 @@ async function runScrape(
      }
      processedVenues.add(venue.venueName);
 
-     logInfo(`searching events in ${color.yellow(venue.venueName)}`);
+     logInfo(`Searching events in ${color.yellow(venue.venueName)}`);
 
      const tempR = await getEventsByVenueWithPagination(
       jsonConfig,
@@ -132,6 +132,9 @@ async function runScrape(
      );
 
      if (tempR.length > 0) {
+      tempR.forEach((event) => {
+       event.venueName = venue.venueName;
+      });
       result.push(...tempR);
       venue.events = tempR;
       await saveFileData(
@@ -166,7 +169,6 @@ async function runScrape(
    }
   }
  } catch (fileError) {
-
  }
 }
 
@@ -205,6 +207,7 @@ function joinAllEvents(result, venueCount) {
     lastBuy: event.lastBuy,
     minPrice: event.eventDetail?.minPrice,
     maxPrice: event.eventDetail?.maxPrice,
+    venueName: event.venueName,
    })),
   });
  }
