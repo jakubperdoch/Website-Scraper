@@ -1,5 +1,4 @@
 const fs = require('fs').promises;
-const https = require('https');
 const { logInfo, askUserForRetry, getCurrentLocation } = require('./utils.js');
 const color = require('colors');
 const { firefox } = require('playwright');
@@ -56,6 +55,7 @@ async function runScrape(
      password: selectedProxy.auth.password,
     };
    } catch (pe) {
+    console.error('Proxy configuration error:', pe);
    }
   }
 
@@ -71,7 +71,7 @@ async function runScrape(
   const result = [];
   const venuesResult = { venues: '', totalEvents: 0 };
 
-  const handleCleanup = async () => {
+  const handleCleanup = async (exitCode = 0) => {
    await saveFileData(
     venuesResult,
     `result_venues_${currentLocation.name}.json`
@@ -81,11 +81,12 @@ async function runScrape(
     `all_events_${currentLocation.name}.json`
    );
    await browser.close();
-   process.exit(1);
+   process.exit(exitCode);
   };
 
   process.on('uncaughtException', async (err) => {
-   await handleCleanup();
+   console.error('Uncaught Exception:', err);
+   await handleCleanup(1);
   });
 
   process.on('SIGTSTP', async () => {
@@ -169,6 +170,7 @@ async function runScrape(
    }
   }
  } catch (fileError) {
+  console.error('File error:', fileError);
  }
 }
 

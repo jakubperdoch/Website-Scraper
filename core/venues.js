@@ -251,7 +251,7 @@ async function generateUrlVenue(locationName, venue, axiosInstance) {
 }
 
 async function generateEventUrl(eventUrl, axiosInstance) {
- let result = 'https://www.viagogo.com' + eventUrl;
+ let result = eventUrl;
  try {
   await axiosInstance
    .get(result)
@@ -259,7 +259,7 @@ async function generateEventUrl(eventUrl, axiosInstance) {
     result = response.request.res.responseUrl;
    })
    .catch((error) => {
-    result = 'https://www.viagogo.com' + eventUrl; // Fallback to constructed URL
+    result = eventUrl; // Fallback to constructed URL
    });
  } catch (e) {}
  return result;
@@ -304,7 +304,7 @@ async function getDetailsEvent(
      );
     }
    }
-   console.log('done.');
+   console.log('done');
    return result;
   } else {
    console.log('Attempt limit for get event details');
@@ -355,6 +355,7 @@ async function getPopupsEvent(event, customParams, tryNumber = 0) {
   console.log('Request successful.');
   return result;
  } catch (error) {
+  console.log('Error getting popups event.');
   return getPopupsEvent(event, customParams, tryNumber + 1);
  }
 }

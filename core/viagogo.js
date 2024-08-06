@@ -352,10 +352,9 @@ async function getLastBuy(urlEvent, axiosInstance = null) {
   const currentAxios = axiosInstance || axios.create();
 
   try {
-   const response = await currentAxios.get(
-    'https://www.viagogo.com/' + urlEvent,
-    { headers: customHeaders }
-   );
+   const response = await currentAxios.get(urlEvent, {
+    headers: customHeaders,
+   });
 
    const dom = new JSDOM(response.data);
    const scriptContent =
@@ -371,7 +370,9 @@ async function getLastBuy(urlEvent, axiosInstance = null) {
      result = { message: message, qualifier: qualifier };
     }
    });
-  } catch (err) {}
+  } catch (err) {
+   console.error('Error: ', err);
+  }
  }
  return result;
 }
