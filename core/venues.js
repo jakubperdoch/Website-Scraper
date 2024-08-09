@@ -7,38 +7,26 @@ const {
  askUserForRetry,
  getCurrentDate,
 } = require('../utils.js');
-const { firefox } = require('playwright');
 const { getLastBuy, getNumberByString } = require('../core/viagogo.js');
 
-async function getVenuesByLocation(
- customParams,
- currentLocation,
- tryNumber = 0
-) {
+const MAX_RETRIES = 5;
+
+async function getVenuesByLocation(customParams, currentLocation) {
  customParams.lat = btoa(currentLocation.lat);
  customParams.lon = btoa(currentLocation.long);
- let result = null;
- let error = false;
- const customHeaders = {
-  headers: {
-   'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-  },
- };
- if (tryNumber < 5) {
+
+ try {
   const response = await axios.get('https://www.viagogo.com/explore', {
    params: customParams,
-   headers: customHeaders,
+   headers: {
+    'User-Agent':
+     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+   },
   });
-  result = response.data;
-
-  if (result.events) {
-   result = result.events;
-  }
-  return result;
- } else {
-  console.log('Attempt limit for getVenuesByLocation');
-  return undefined;
+  return response.data.events || null;
+ } catch (error) {
+  console.log('Error fetching venues:', error);
+  return null;
  }
 }
 
@@ -46,57 +34,21 @@ async function getEventsByVenue(
  customParams,
  venue,
  locationName,
- tryNumber = 0,
  axiosInstance
 ) {
  console.log('Getting events - page: ' + customParams.pageIndex);
- try {
-  customParams.venueId = venue.venueId;
-  let result = [];
-  let error = false;
-  let currentUrl = await generateUrlVenue(locationName, venue, axiosInstance);
-  currentUrl =
-   currentUrl +
-   `?pageIndex=${customParams.pageIndex}&method=GetFilteredEvents&venueId=${venue.venueId}&to=9999-12-31T23:59:59.999Z&nearbyGridRadius=50`;
-  if (tryNumber < 1 && currentUrl) {
-   await axiosInstance
-    .post(currentUrl)
-    .then((response) => {
-     result = response.data;
-     return result;
-    })
-    .catch((_) => {
-     error = true;
-    });
+ customParams.venueId = venue.venueId;
 
-   if (error) {
-    return await getEventsByVenue(
-     customParams,
-     venue,
-     locationName,
-     tryNumber + 1,
-     axiosInstance
-    );
-   } else {
-    return result;
-   }
-  } else {
-   console.log('Attempt limit for getEventsByVenue');
-   return [];
-  }
- } catch (e) {
-  const answer = await askUserForRetry();
-  if (answer.toLowerCase() === 's') {
-   return await getEventsByVenue(
-    customParams,
-    venue,
-    locationName,
-    0,
-    axiosInstance
-   );
-  } else {
-   return [];
-  }
+ const currentUrl = await generateUrlVenue(locationName, venue, axiosInstance);
+ if (!currentUrl) return [];
+
+ const url = `${currentUrl}?pageIndex=${customParams.pageIndex}&method=GetFilteredEvents&venueId=${venue.venueId}&to=9999-12-31T23:59:59.999Z&nearbyGridRadius=50`;
+
+ try {
+  const response = await axiosInstance.post(url);
+  return response.data;
+ } catch (error) {
+  return [];
  }
 }
 
@@ -113,46 +65,30 @@ async function getEventsByVenueWithPagination(
   venueId: venue.venueId,
   pageIndex: 0,
  };
- let customResult = [];
- try {
-  while (true) {
-   const tempEvents = await getEventsByVenue(
-    customParams,
-    venue,
-    locationName,
-    0,
-    axiosInstance
+ const customResult = [];
+
+ while (true) {
+  const tempEvents = await getEventsByVenue(
+   customParams,
+   venue,
+   locationName,
+   axiosInstance
+  );
+  if (tempEvents && tempEvents.items && tempEvents.items.length > 0) {
+   logInfo(
+    `Events found on page ${customParams.pageIndex}: ${color.yellow(tempEvents.items.length)}`
    );
-   if (tempEvents && tempEvents.items && tempEvents.items.length > 0) {
-    logInfo(
-     `Events found on page ${customParams.pageIndex}: ${color.yellow(tempEvents.items.length)}`
-    );
-    const events = await getEventInfo(
-     tempEvents.items,
-     browser,
-     jsonConfig,
-     axiosInstance
-    );
-    customResult.push(...events);
-    customParams.pageIndex++;
-   } else {
-    console.log('No more events found, moving to next venue.');
-    break;
-   }
-  }
- } catch (e) {
-  const answer = await askUserForRetry();
-  if (answer.toLowerCase() === 's') {
-   return await getEventsByVenueWithPagination(
-    jsonConfig,
-    venue,
-    locationName,
+   const events = await getEventInfo(
+    tempEvents.items,
     browser,
-    searchInfoViewed,
+    jsonConfig,
     axiosInstance
    );
+   customResult.push(...events);
+   customParams.pageIndex++;
   } else {
-   return customResult;
+   console.log('No more events found, moving to next venue.');
+   break;
   }
  }
  console.log('Total events found for venue:', customResult.length);
@@ -160,203 +96,111 @@ async function getEventsByVenueWithPagination(
 }
 
 async function getEventInfo(listEvents, browser, jsonConfig, axiosInstance) {
- let resultEvents = listEvents;
  try {
-  for (let c = 0; c < resultEvents.length; c++) {
-   console.log(' ');
-   let lastBuy = await getLastBuy(resultEvents[c].url, axiosInstance);
-   resultEvents[c].numberRTimeLastBuy = 0;
-   resultEvents[c].timeSpread = getCurrentDate();
-   if (lastBuy) {
-    resultEvents[c].lastBuy = lastBuy;
-   } else {
-    resultEvents[c].lastBuy = 'ND';
-    resultEvents[c].numberLastBuy = 0;
-    resultEvents[c].numberTimeLastBuy = 0;
-   }
-   let eventUrl = await generateEventUrl(resultEvents[c].url, axiosInstance);
-   eventUrl = eventUrl + '?qty=1';
-   resultEvents[c].url = eventUrl;
+  return await Promise.all(
+   listEvents.map(async (event) => {
+    console.log('Processing event:', event.name);
+    const lastBuy = await getLastBuy(event.url, axiosInstance);
+    const eventUrl =
+     (await generateEventUrl(event.url, axiosInstance)) + '?qty=1';
 
-   if (searchInfoViewed) {
-    let viewed = await listenInfoViewed(browser, eventUrl);
-    if (viewed) {
-     resultEvents[c].viewed = viewed.trim();
-     resultEvents[c].numberViewed = getNumberByString(viewed.trim());
-    } else {
-     resultEvents[c].viewed = 'ND';
-     resultEvents[c].numberViewed = 0;
-    }
-   }
-   resultEvents[c].popups = await getPopupsEvent(
-    resultEvents[c],
-    jsonConfig.event_popups,
-    0,
-    axiosInstance
-   );
-   if (resultEvents[c].popups.LikelyToSellOutMessage.Qualifier) {
-    resultEvents[c].popups.LikelyToSellOutMessage.numberQualifier =
-     getNumberByString(
-      resultEvents[c].popups.LikelyToSellOutMessage.Qualifier.trim()
-     );
-   } else {
-    resultEvents[c].popups.LikelyToSellOutMessage.numberQualifier = 0;
-   }
-   resultEvents[c].eventDetail = await getDetailsEvent(
-    resultEvents[c],
-    jsonConfig.event_details,
-    0,
-    axiosInstance
-   );
-  }
-  console.log(' ');
-  return resultEvents;
- } catch (e) {
-  const answer = await askUserForRetry();
-  if (answer.toLowerCase() === 's') {
-   return await getEventInfo(listEvents, page, jsonConfig, axiosInstance);
-  } else {
-   return resultEvents;
-  }
+    const viewed = searchInfoViewed
+     ? await listenInfoViewed(browser, eventUrl)
+     : 'ND';
+
+    const popups = await getPopupsEvent(event, jsonConfig.event_popups);
+    const eventDetail = await getDetailsEvent(
+     event,
+     jsonConfig.event_details,
+     axiosInstance
+    );
+
+    return {
+     ...event,
+     lastBuy: lastBuy || 'ND',
+     numberRTimeLastBuy: 0,
+     timeSpread: getCurrentDate(),
+     viewed: viewed || 'ND',
+     numberViewed: getNumberByString(viewed || 'ND'),
+     popups,
+     eventDetail,
+     url: eventUrl,
+    };
+   })
+  );
+ } catch (error) {
+  console.log('Error fetching event info:', error);
+  return [];
  }
 }
 
 async function generateUrlVenue(locationName, venue, axiosInstance) {
- let result = null;
  try {
-  await axiosInstance
-   .get('https://www.viagogo.com/_V-' + venue.venueId) // Establish maxRedirects to 0 to disable automatic redirects.
-   .then((response) => {
-    result = response.request.res.responseUrl;
-   })
-   .catch((error) => {
-    let venueName = venue.venueName.replace(/ - /g, '-');
-    venueName = venueName.replace(/\s/g, '-');
-    venueName = venueName.replace(/---/g, '-');
-    venueName = venueName.replace(/,/g, '');
-    venueName = venueName.replace(/[()]/g, '');
-    venueName = venueName.replace(/"/g, '');
-    result =
-     'https://www.viagogo.com/' +
-     locationName +
-     '/' +
-     venueName +
-     '-Tickets/_V-' +
-     venue.venueId;
-   });
- } catch (e) {
-  console.log('Attempt limit for generateUrlVenue');
+  const response = await axiosInstance.get(
+   `https://www.viagogo.com/_V-${venue.venueId}`
+  );
+  return response.request.res.responseUrl;
+ } catch (error) {
+  const venueName = venue.venueName.replace(/ - |---|[\s,()"]/g, '-');
+  return `https://www.viagogo.com/${locationName}/${venueName}-Tickets/_V-${venue.venueId}`;
  }
- return result;
 }
 
 async function generateEventUrl(eventUrl, axiosInstance) {
- let result = eventUrl;
  try {
-  await axiosInstance
-   .get(result)
-   .then((response) => {
-    result = response.request.res.responseUrl;
-   })
-   .catch((error) => {
-    result = eventUrl; // Fallback to constructed URL
-   });
- } catch (e) {}
- return result;
-}
-
-async function getDetailsEvent(
- event,
- customParams,
- tryNumber = 0,
- axiosInstance
-) {
- try {
-  console.log('Getting details event[' + event.name + ']...');
-  let result = null;
-  let error = false;
-  let urlEvent = event.url;
-  if (tryNumber < 5) {
-   if (urlEvent != null || urlEvent != undefined) {
-    const customHeaders = {
-     headers: {
-      'User-Agent':
-       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-     },
-    };
-    await axiosInstance
-     .post(urlEvent, customParams, customHeaders)
-     .then((response) => {
-      result = response.data;
-      if (result.items) {
-       delete result.items;
-      }
-     })
-     .catch((axioError) => {
-      error = true;
-     });
-    if (error) {
-     return await getDetailsEvent(
-      event,
-      customParams,
-      tryNumber + 1,
-      axiosInstance
-     );
-    }
-   }
-   console.log('done');
-   return result;
-  } else {
-   console.log('Attempt limit for get event details');
-   return null;
-  }
- } catch (e) {
-  const answer = await askUserForRetry();
-  if (answer.toLowerCase() === 's') {
-   return await getDetailsEvent(event, customParams, tryNumber, axiosInstance);
-  } else {
-   return null;
-  }
+  const response = await axiosInstance.get(eventUrl);
+  return response.request.res.responseUrl;
+ } catch (error) {
+  return eventUrl; // Fallback to constructed URL
  }
 }
 
-async function getPopupsEvent(event, customParams, tryNumber = 0) {
- console.log(`Getting popups event [${event.name}]...`);
- if (tryNumber >= 5) {
-  console.log('Attempt limit reached for getPopupsEvent.');
+async function getDetailsEvent(event, customParams, axiosInstance) {
+ console.log('Getting details for event:', event.name);
+ if (!event.url) return null;
+
+ try {
+  const response = await axiosInstance.post(event.url, customParams, {
+   headers: {
+    'User-Agent':
+     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+   },
+  });
+  const result = response.data;
+  delete result.items;
+  return result;
+ } catch (error) {
+  console.log('Error fetching event details:', error);
   return null;
  }
+}
 
+async function getPopupsEvent(event, customParams) {
+ console.log(`Getting popups for event [${event.name}]...`);
  if (!event.url) {
   console.log('Invalid event URL.');
   return null;
  }
 
- const customHeaders = {
-  headers: {
-   'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-  },
- };
-
  try {
-  const response = await axios.post(event.url, customParams, customHeaders);
+  const response = await axios.post(event.url, customParams, {
+   headers: {
+    'User-Agent':
+     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+   },
+  });
   const resultData = response.data;
-  if (resultData.items) {
-   delete resultData.items;
-  }
-  const result = {
+  delete resultData.items;
+  return {
    TicketsLeftMessage: resultData.TicketsLeftMessage,
    LikelyToSellOutMessage: resultData.LikelyToSellOutMessage,
    BestValueExplanationMessage: resultData.BestValueExplanationMessage,
    LimitedQuantityRemainingMessage: resultData.LimitedQuantityRemainingMessage,
    NumberOfGridResultsMessage: resultData.NumberOfGridResultsMessage,
   };
-  console.log('Request successful.');
-  return result;
  } catch (error) {
-  console.log('Error getting popups event.');
-  return getPopupsEvent(event, customParams, tryNumber + 1);
+  console.log('Error fetching popups event:', error);
+  return null;
  }
 }
 
@@ -367,79 +211,52 @@ async function saveFileData(jsonData, fileName = 'result_venues.json') {
  if (!fs.existsSync(directory)) {
   fs.mkdirSync(directory, { recursive: true });
  }
- const filePath = directory + fileName;
- await fs.promises
-  .writeFile(filePath, jsonString, 'utf8')
-  .then(() => {
-   logInfo('File saved successfully: ' + color.green(filePath));
-   return true;
-  })
-  .catch((err) => {
-   return false;
-  });
+ const filePath = `${directory}${fileName}`;
+
+ try {
+  await fs.promises.writeFile(filePath, jsonString, 'utf8');
+  logInfo('File saved successfully: ' + color.green(filePath));
+ } catch (err) {
+  logError('Error saving file:', err);
+ }
 }
 
 async function listenInfoViewed(browser, url) {
  const page = await browser.newPage();
  try {
   await page.goto(url);
-  await page.waitForLoadState('domcontentloaded');
-  console.log('Document loaded');
   await page.waitForLoadState('networkidle');
-  const progressBarExists = await page.evaluate(() => {
-   return !!document.getElementById('progressbar');
-  });
+  const progressBarExists = await page.evaluate(
+   () => !!document.getElementById('progressbar')
+  );
+
   if (progressBarExists) {
    await page.waitForFunction(
     () => {
      const progressBar = document.getElementById('progressbar');
-     if (progressBar) {
-      const width = progressBar.style.width;
-      return width === '100%';
-     }
-     return false;
+     return progressBar && progressBar.style.width === '100%';
     },
     { timeout: 10000 }
    );
   }
-  console.log('Progress bar - 100%');
-  return await extractViewedText(page, url);
- } catch (e) {
-  const answer = await askUserForRetry();
-  if (answer.toLowerCase() === 's') {
-   await page.close();
-   return await listenInfoViewed(browser, url);
-  } else {
-   return null;
-  }
+  return await extractViewedText(page);
+ } catch (error) {
+  console.log('Error in listenInfoViewed:', error);
+  return null;
  } finally {
   await page.close();
  }
 }
 
-async function extractViewedText(page, url) {
+async function extractViewedText(page) {
  console.log('Retrieving information...');
  try {
-  await page.goto(url);
-  await page.waitForLoadState('domcontentloaded');
-  console.log('Document loaded');
   const htmlContent = await page.content();
   const match = htmlContent.match(/(\d+\speople\sviewed\sthis\sevent)/);
-  let result = null;
-  if (match && match[1]) {
-   result = match[1];
-  } else {
-   result = '0';
-  }
-  console.log('*** Result info viewed: ' + result);
-  return result;
- } catch (e) {
-  const answer = await askUserForRetry();
-  if (answer.toLowerCase() === 's') {
-   return await extractViewedText(page, url);
-  } else {
-   return null;
-  }
+  return match ? match[1] : '0';
+ } catch (error) {
+  console.log('Error extracting viewed text:', error);
+  return '0';
  }
 }
 
