@@ -1,57 +1,58 @@
 {
-    "bot": {
-        "topNumber": 20,
-        "limitTopTo": false,
-        "timeOut": 30000
-    },
-    "general": {
-        "status": "done"
-    },
-    "events_by_location": {
-        "size": 500,
-        "location_index": 2,
-        "method": "getExploreEvents",
-        "page":0
-    },
-    "event_details": {
-        "ShowAllTickets": false,
-        "HideDuplicateTicketsV2": false,
-        "Quantity": 1,
-        "PageSize": 6,
-        "CurrentPage": 1,
-        "SortBy": "POPULARITY",
-        "Method": "IndexSh"
-    },
-    "event_popups": {
-        "ShowAllTickets": false,
-        "Quantity": 2,
-        "PageSize": 6,
-        "CurrentPage": 1,
-        "SortBy": "NEWPRICE",
-        "SortDirection": 0,
-        "TicketTypeSelection": 0,
-        "Sections": "",
-        "Rows": "",
-        "TicketClasses": "",
-        "PriceRange": "0-NaN"
-    },
-    "all_events": {
-        "method": "GetGridData",
-        "PageSize": 50,
-        "CurrentPage": 1,
-        "sortBy": "POPULARITY"
-    },
-    "top_events": {
-        "size": 20,
-        "location_index": 3, 
-        "method": "getExploreEvents",
-        "page":0
-    },
-    "venue_items":{
-        "method":"GetFilteredEvents",
-        "pageIndex":0,
-        "location_index": 1,
-        "venueId":"",
-        "to": "9999-12-31T23:59:59.999Z"
-    }
+	"bot": {
+		"topNumber": 20,
+		"limitTopTo": false,
+		"timeOut": 30000
+	},
+	"general": {
+		"status": "done"
+	},
+	"events_by_location": {
+		"size": 500,
+		"location_index": 2,
+		"method": "getExploreEvents",
+		"page": 0
+	},
+	"event_details": {
+		"ShowAllTickets": false,
+		"HideDuplicateTicketsV2": false,
+		"Quantity": 0,
+		"PageSize": 6,
+		"CurrentPage": 1,
+		"SortBy": "POPULARITY",
+		"Method": "IndexSh",
+		"BetterValueTickets": false
+	},
+	"event_popups": {
+		"ShowAllTickets": false,
+		"Quantity": 2,
+		"PageSize": 6,
+		"CurrentPage": 1,
+		"SortBy": "NEWPRICE",
+		"SortDirection": 0,
+		"TicketTypeSelection": 0,
+		"Sections": "",
+		"Rows": "",
+		"TicketClasses": "",
+		"PriceRange": "0-NaN"
+	},
+	"all_events": {
+		"method": "GetGridData",
+		"PageSize": 50,
+		"CurrentPage": 1,
+		"sortBy": "POPULARITY"
+	},
+	"top_events": {
+		"size": 20,
+		"location_index": 3,
+		"method": "getExploreEvents",
+		"page": 0
+	},
+	"venue_items": {
+		"method": "GetFilteredEvents",
+		"pageIndex": 0,
+		"location_index": 1,
+		"venueId": "",
+		"to": "9999-12-31T23:59:59.999Z"
+	}
 }
