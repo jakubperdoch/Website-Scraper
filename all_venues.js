@@ -144,8 +144,6 @@ async function runScrape(
 							`result_venues_${currentLocation.name}.json`
 						);
 
-						await saveFileData(result, `${currentLocation.name}.json`);
-
 						await saveFileData(
 							joinAllEvents(result, result.length),
 							`all_events_${currentLocation.name}.json`
