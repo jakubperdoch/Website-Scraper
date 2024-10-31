@@ -115,7 +115,7 @@ async function getEventInfo(
 
 				const viewed = searchInfoViewed
 					? await listenInfoViewed(browser, eventUrl)
-					: 'ND';
+					: null;
 
 				const popups = await getPopupsEvent(event, jsonConfig.event_popups);
 				const eventDetail = await getDetailsEvent(
@@ -126,10 +126,10 @@ async function getEventInfo(
 
 				return {
 					...event,
-					lastBuy: lastBuy || 'ND',
+					lastBuy: lastBuy || null,
 					numberRTimeLastBuy: 0,
 					timeSpread: getCurrentDate(),
-					viewed: viewed || 'ND',
+					viewed: viewed || null,
 					numberViewed: getNumberByString(viewed || 'ND'),
 					popups,
 					eventDetail,

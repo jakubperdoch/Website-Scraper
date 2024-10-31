@@ -209,12 +209,12 @@ function joinAllEvents(result, venueCount) {
 				eventName: event.name,
 				url: event.url,
 				formattedDateWithoutYear: event.formattedDateWithoutYear,
-				lastBuy: event.lastBuy,
 				minPrice: event.eventDetail?.minPrice,
 				maxPrice: event.eventDetail?.maxPrice,
 				quantity: event.eventDetail?.quantity,
 				betterValueTickets: event.eventDetail?.betterValueTickets,
 				venueName: event.venueName,
+				...(event.lastBuy !== null && { lastBuy: event.lastBuy }),
 			})),
 		});
 	}
